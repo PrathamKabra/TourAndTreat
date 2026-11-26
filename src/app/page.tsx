@@ -1,69 +1,105 @@
-import Image from "next/image";
+import { supabase } from '@/lib/supabase';
 
-export default function Home() {
+interface ProcedureBenchmark {
+  id: string;
+  name: string;
+  category: string;
+  us_average_cost: number;
+  india_package_cost: number;
+  hospital_stay_days: number;
+  hotel_recuperation_days: number;
+}
+
+interface Hospital {
+  id: string;
+  name: string;
+  city: string;
+  rating: number;
+  accreditations: string[];
+}
+
+export default async function Home() {
+  const [proceduresRes, hospitalsRes] = await Promise.all([
+    supabase.from('procedure_benchmarks').select('*').order('name'),
+    supabase.from('hospitals').select('*').order('rating', { ascending: false }).limit(6),
+  ]);
+
+  const procedures: ProcedureBenchmark[] = proceduresRes.data || [];
+  const hospitals: Hospital[] = hospitalsRes.data || [];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="min-h-screen bg-slate-50 p-8 text-slate-900">
+      <div className="max-w-5xl mx-auto space-y-10">
+        <header className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            TourAndTreat Triage Engine
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-slate-600">
+            US elective surgery cost vs. Indian JCI hospital package benchmarks.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </header>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-800">
+            Procedure Benchmarks ({procedures.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {procedures.map((proc) => {
+              const savings = proc.us_average_cost - proc.india_package_cost;
+              const savingsPct = Math.round((savings / proc.us_average_cost) * 100);
+              return (
+                <div key={proc.id} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-2">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-semibold text-slate-900">{proc.name}</h3>
+                    <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-medium">
+                      Save {savingsPct}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">{proc.category}</p>
+                  <div className="pt-2 flex justify-between text-sm">
+                    <div>
+                      <p className="text-slate-500 text-xs">US Average</p>
+                      <p className="font-medium text-slate-700">${Number(proc.us_average_cost).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500 text-xs">India Package</p>
+                      <p className="font-semibold text-emerald-600">${Number(proc.india_package_cost).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500 text-xs">Recuperation</p>
+                      <p className="font-medium text-slate-700">{proc.hospital_stay_days + proc.hotel_recuperation_days} days</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-800">
+            Featured Partner Hospitals ({hospitals.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {hospitals.map((hosp) => (
+              <div key={hosp.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-1">
+                <h3 className="font-medium text-slate-900 text-sm">{hosp.name}</h3>
+                <p className="text-xs text-slate-500">{hosp.city}</p>
+                <div className="pt-2 flex items-center justify-between text-xs">
+                  <span className="text-amber-600 font-semibold">{hosp.rating} / 5.0</span>
+                  <div className="flex gap-1">
+                    {hosp.accreditations.map((acc) => (
+                      <span key={acc} className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px]">
+                        {acc}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }
