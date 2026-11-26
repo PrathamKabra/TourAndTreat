@@ -102,8 +102,9 @@ export async function POST(req: NextRequest) {
       message: 'Your inquiry and clinical summary have been dispatched for preliminary hospital review.',
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Inquiry submission error:', err);
-    return NextResponse.json({ error: err.message || 'Submission failed' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Submission failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

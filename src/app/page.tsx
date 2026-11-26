@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { cacheLife } from 'next/cache';
+import TriageUploader from '@/components/TriageUploader';
 
 interface ProcedureBenchmark {
   id: string;
@@ -18,7 +20,10 @@ interface Hospital {
   accreditations: string[];
 }
 
-export default async function Home() {
+async function getHomeData() {
+  'use cache';
+  cacheLife('hours');
+
   const [proceduresRes, hospitalsRes] = await Promise.all([
     supabase.from('procedure_benchmarks').select('*').order('name'),
     supabase.from('hospitals').select('*').order('rating', { ascending: false }).limit(6),
@@ -26,6 +31,11 @@ export default async function Home() {
 
   const procedures: ProcedureBenchmark[] = proceduresRes.data || [];
   const hospitals: Hospital[] = hospitalsRes.data || [];
+  return { procedures, hospitals };
+}
+
+export default async function Home() {
+  const { procedures, hospitals } = await getHomeData();
 
   return (
     <main className="min-h-screen bg-slate-50 p-8 text-slate-900">
@@ -38,6 +48,10 @@ export default async function Home() {
             US elective surgery cost vs. Indian JCI hospital package benchmarks.
           </p>
         </header>
+
+        <section>
+          <TriageUploader />
+        </section>
 
         <section className="space-y-4">
           <h2 className="text-xl font-semibold text-slate-800">

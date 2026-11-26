@@ -12,11 +12,37 @@ interface HospitalOption {
   airport_distance_km: number;
 }
 
+interface TriageResult {
+  benchmark: {
+    id: string;
+    name: string;
+  };
+  extraction: {
+    diagnosis?: string;
+    procedure_name?: string;
+    cpt_code?: string;
+  };
+  financials: {
+    net_savings: number;
+    savings_percentage: number;
+    us_quoted_cost: number;
+    total_india_trip_cost: number;
+    india_hospital_package: number;
+    breakdown: {
+      flights_cost: number;
+      hotel_recuperation_days: number;
+      hotel_cost: number;
+      visas_and_logistics: number;
+      total_travel_cost: number;
+    };
+  };
+}
+
 export default function TriageUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<TriageResult | null>(null);
 
   // Hospital options from Supabase
   const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
@@ -66,8 +92,8 @@ export default function TriageUploader() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Extraction failed');
       setResult(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Extraction failed');
     } finally {
       setLoading(false);
     }
@@ -75,7 +101,7 @@ export default function TriageUploader() {
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedHospital || !consentAgreed) return;
+    if (!selectedHospital || !consentAgreed || !result) return;
 
     setSubmitting(true);
     setSubmitError(null);
@@ -99,8 +125,8 @@ export default function TriageUploader() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to submit inquiry');
       setSubmitSuccess(true);
-    } catch (err: any) {
-      setSubmitError(err.message);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit inquiry');
     } finally {
       setSubmitting(false);
     }
