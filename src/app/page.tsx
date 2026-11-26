@@ -47,6 +47,23 @@ export default async function Home() {
           <p className="text-slate-600">
             US elective surgery cost vs. Indian JCI hospital package benchmarks.
           </p>
+
+          <div className="flex justify-between items-start">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              TourAndTreat Triage Engine
+            </h1>
+            <p className="text-slate-600">
+              US elective surgery cost vs. Indian JCI hospital package benchmarks.
+            </p>
+          </div>
+          <a
+            href="/dashboard"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition"
+          >
+            Coordinator Portal
+          </a>
+          </div>
         </header>
 
         <section>
