@@ -7,13 +7,13 @@ export async function GET() {
   await connection();
 
   try {
-    const { user, isCoordinator } = await getCoordinatorAccess();
+    const { user, hasAccess } = await getCoordinatorAccess();
 
     if (!user) {
       return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
     }
 
-    if (!isCoordinator) {
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Coordinator access is required.' }, { status: 403 });
     }
 

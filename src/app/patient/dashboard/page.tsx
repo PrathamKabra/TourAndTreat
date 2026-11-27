@@ -5,14 +5,18 @@ import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-browser';
 import { Building2, FileText, ArrowLeft, Loader2 } from 'lucide-react';
+import AssessmentPdfButton from '@/components/AssessmentPdfButton';
 
 interface PatientInquiry {
   id: string;
   status: string;
   extracted_procedure_name: string | null;
   extracted_diagnosis: string | null;
+  extracted_cpt_code: string | null;
+  us_quoted_price: number | null;
   estimated_net_savings: number | null;
   estimated_india_package_cost: number | null;
+  estimated_travel_cost: number | null;
   hospital_preliminary_notes: string | null;
   created_at: string;
   hospitals: { name: string; city: string } | { name: string; city: string }[] | null;
@@ -50,8 +54,11 @@ export default function PatientDashboard() {
             status,
             extracted_procedure_name,
             extracted_diagnosis,
+            extracted_cpt_code,
+            us_quoted_price,
             estimated_net_savings,
             estimated_india_package_cost,
+            estimated_travel_cost,
             hospital_preliminary_notes,
             created_at,
             hospitals (name, city)
@@ -153,6 +160,14 @@ export default function PatientDashboard() {
               const hospital = Array.isArray(inquiry.hospitals)
                 ? inquiry.hospitals[0]
                 : inquiry.hospitals;
+              const totalIndiaTripCost =
+                inquiry.estimated_india_package_cost !== null && inquiry.estimated_travel_cost !== null
+                  ? inquiry.estimated_india_package_cost + inquiry.estimated_travel_cost
+                  : null;
+              const savingsPercentage =
+                inquiry.us_quoted_price && inquiry.us_quoted_price > 0
+                  ? Math.round((Number(inquiry.estimated_net_savings ?? 0) / inquiry.us_quoted_price) * 100)
+                  : null;
 
               return (
                 <article key={inquiry.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
@@ -193,6 +208,27 @@ export default function PatientDashboard() {
                       </p>
                       <p className="text-slate-400 text-[11px]">Includes surgery, stay, and companion flights</p>
                     </div>
+                  </div>
+
+                  <div className="flex justify-end border-t border-slate-100 pt-4">
+                    <AssessmentPdfButton
+                      assessment={{
+                        procedureName: inquiry.extracted_procedure_name || 'Elective Procedure',
+                        diagnosis: inquiry.extracted_diagnosis,
+                        cptCode: inquiry.extracted_cpt_code,
+                        assessmentDate: inquiry.created_at,
+                        hospitalName: hospital?.name,
+                        hospitalCity: hospital?.city,
+                        status: inquiry.status,
+                        usQuotedCost: inquiry.us_quoted_price,
+                        indiaHospitalPackage: inquiry.estimated_india_package_cost,
+                        travelCost: inquiry.estimated_travel_cost,
+                        totalIndiaTripCost,
+                        netSavings: inquiry.estimated_net_savings,
+                        savingsPercentage,
+                        notes: inquiry.hospital_preliminary_notes,
+                      }}
+                    />
                   </div>
 
                   {inquiry.hospital_preliminary_notes && (

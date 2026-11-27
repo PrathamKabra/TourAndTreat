@@ -6,6 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-browser';
 import { Upload, AlertCircle, Loader2, CheckCircle2, Building2, ShieldCheck, Lock } from 'lucide-react';
 import { z } from 'zod';
+import AssessmentPdfButton from '@/components/AssessmentPdfButton';
 
 interface HospitalOption {
   id: string;
@@ -294,6 +295,30 @@ export default function TriageUploader() {
                         <span>Visas and transit:</span>
                         <span className="font-medium">${result.financials.breakdown.visas_and_logistics.toLocaleString()}</span>
                       </div>
+                    </div>
+
+                    <div className="flex justify-end border-t border-slate-200 pt-4">
+                      <AssessmentPdfButton
+                        assessment={{
+                          procedureName: result.benchmark.name,
+                          diagnosis: result.extraction.diagnosis,
+                          cptCode: result.extraction.cpt_code,
+                          hospitalName: hospitals.find((hospital) => hospital.id === selectedHospital)?.name,
+                          hospitalCity: hospitals.find((hospital) => hospital.id === selectedHospital)?.city,
+                          usQuotedCost: result.financials.us_quoted_cost,
+                          indiaHospitalPackage: result.financials.india_hospital_package,
+                          travelCost: result.financials.breakdown.total_travel_cost,
+                          totalIndiaTripCost: result.financials.total_india_trip_cost,
+                          netSavings: result.financials.net_savings,
+                          savingsPercentage: result.financials.savings_percentage,
+                          travelBreakdown: {
+                            flightsCost: result.financials.breakdown.flights_cost,
+                            hotelNights: result.financials.breakdown.hotel_recuperation_days,
+                            hotelCost: result.financials.breakdown.hotel_cost,
+                            visasAndLogistics: result.financials.breakdown.visas_and_logistics,
+                          },
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

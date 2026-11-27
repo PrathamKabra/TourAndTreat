@@ -43,7 +43,7 @@ export default async function Home() {
         <header className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              TourAndTreat Triage Engine
+              Tour And Treat
             </h1>
             <p className="text-slate-600">
               US elective surgery cost vs. Indian JCI hospital package benchmarks.

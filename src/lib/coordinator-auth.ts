@@ -4,13 +4,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function getCoordinatorAccess(): Promise<{
   user: User | null;
-  isCoordinator: boolean;
+  hasAccess: boolean;
 }> {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
   if (authError) throw authError;
-  if (!user) return { user: null, isCoordinator: false };
+  if (!user) return { user: null, hasAccess: false };
 
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
@@ -22,6 +22,6 @@ export async function getCoordinatorAccess(): Promise<{
 
   return {
     user,
-    isCoordinator: profile?.role === 'coordinator',
+    hasAccess: profile?.role === 'coordinator' || profile?.role === 'admin',
   };
 }
