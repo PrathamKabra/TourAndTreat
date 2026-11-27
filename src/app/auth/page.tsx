@@ -1,57 +1,108 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import { ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 
-export default function AuthPage() {
+function AuthPageContent() {
   const router = useRouter();
-  const supabase = createClient();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const callbackError = !hasSubmitted && searchParams.get('authError') === 'confirmation';
+
+  const getNextPath = () => {
+    const next = searchParams.get('next');
+    if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) {
+      return '/patient/dashboard';
+    }
+    return next;
+  };
+
+  const handleResendConfirmation = async () => {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setError('Enter your email address to resend the confirmation link.');
+      return;
+    }
+
+    setResending(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const callbackUrl = new URL('/auth/callback', window.location.origin);
+      callbackUrl.searchParams.set('next', getNextPath());
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: normalizedEmail,
+        options: { emailRedirectTo: callbackUrl.toString() },
+      });
+
+      if (resendError) throw resendError;
+      setNotice('If an unconfirmed account exists for this address, a new confirmation email has been sent.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to resend the confirmation email.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setHasSubmitted(true);
     setError(null);
+    setNotice(null);
 
     try {
       if (isSignUp) {
         const { data, error: signUpErr } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
+            emailRedirectTo: (() => {
+              const callbackUrl = new URL('/auth/callback', window.location.origin);
+              callbackUrl.searchParams.set('next', getNextPath());
+              return callbackUrl.toString();
+            })(),
             data: {
-              full_name: fullName,
+              full_name: fullName.trim(),
             },
           },
         });
 
         if (signUpErr) throw signUpErr;
 
-        // Auto sign-in or check email notice
         if (data.session) {
-          router.push('/patient/dashboard');
+          router.replace(getNextPath());
+          router.refresh();
         } else {
-          setError('Account created. Check your email inbox to confirm your address, or sign in.');
+          setPassword('');
+          setNotice('Account created. Check your email to confirm your address before signing in.');
         }
       } else {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email,
+          email: email.trim(),
           password,
         });
 
         if (signInErr) throw signInErr;
-        router.push('/patient/dashboard');
+        router.replace(getNextPath());
+        router.refresh();
       }
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -114,11 +165,32 @@ export default function AuthPage() {
               />
             </div>
 
-            {error && (
+            {(error || (callbackError
+              ? 'Email confirmation failed. Please try signing in or request a new confirmation email.'
+              : null)) && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>
+                  {error || 'Email confirmation failed. Please try signing in or request a new confirmation email.'}
+                </span>
               </div>
+            )}
+
+            {callbackError && (
+              <button
+                type="button"
+                onClick={handleResendConfirmation}
+                disabled={loading || resending}
+                className="w-full text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+              >
+                {resending ? 'Sending confirmation email...' : 'Resend confirmation email'}
+              </button>
+            )}
+
+            {notice && (
+              <p className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800" role="status">
+                {notice}
+              </p>
             )}
 
             <button
@@ -139,11 +211,13 @@ export default function AuthPage() {
           <div className="mt-6 text-center">
             <button
               type="button"
+              disabled={loading}
               onClick={() => {
                 setIsSignUp(!isSignUp);
                 setError(null);
+                setNotice(null);
               }}
-              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
             >
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
             </button>
@@ -156,5 +230,13 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <AuthPageContent />
+    </Suspense>
   );
 }

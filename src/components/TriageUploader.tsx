@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-browser';
 import { Upload, AlertCircle, Loader2, CheckCircle2, Building2, ShieldCheck, Lock } from 'lucide-react';
+import { z } from 'zod';
 
 interface HospitalOption {
   id: string;
@@ -12,15 +14,60 @@ interface HospitalOption {
   rating: number;
 }
 
+const triageResultSchema = z.object({
+  benchmark: z.object({
+    id: z.string(),
+    name: z.string(),
+  }),
+  extraction: z.object({
+    diagnosis: z.string().nullable().optional(),
+    procedure_name: z.string().nullable().optional(),
+    cpt_code: z.string().nullable().optional(),
+    us_quoted_price: z.number().nullable().optional(),
+  }),
+  financials: z.object({
+    net_savings: z.number().finite(),
+    savings_percentage: z.number().finite(),
+    us_quoted_cost: z.number().finite(),
+    total_india_trip_cost: z.number().finite(),
+    india_hospital_package: z.number().finite(),
+    breakdown: z.object({
+      flights_cost: z.number().finite(),
+      hotel_recuperation_days: z.number().finite(),
+      hotel_cost: z.number().finite(),
+      visas_and_logistics: z.number().finite(),
+      total_travel_cost: z.number().finite(),
+    }),
+  }),
+});
+
+type TriageResult = z.infer<typeof triageResultSchema>;
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(`Unexpected server response (${response.status}): ${text.slice(0, 150)}`);
+  }
+  return response.json();
+}
+
+function getApiError(value: unknown, fallback: string) {
+  if (typeof value === 'object' && value !== null && 'error' in value && typeof value.error === 'string') {
+    return value.error;
+  }
+  return fallback;
+}
+
 export default function TriageUploader() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<TriageResult | null>(null);
 
   const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
   const [selectedHospital, setSelectedHospital] = useState<string>('');
@@ -31,20 +78,38 @@ export default function TriageUploader() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+    let active = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setSession(session);
+    });
 
-      const { data } = await supabase
-        .from('hospitals')
-        .select('id, name, city, rating')
-        .order('rating', { ascending: false });
-      if (data && data.length > 0) {
-        setHospitals(data);
-        setSelectedHospital(data[0].id);
+    async function loadFormData() {
+      try {
+        const [
+          { data: { session: currentSession }, error: sessionError },
+          { data, error: hospitalsError },
+        ] = await Promise.all([
+          supabase.auth.getSession(),
+          supabase.from('hospitals').select('id, name, city, rating').order('rating', { ascending: false }),
+        ]);
+
+        if (sessionError) throw sessionError;
+        if (hospitalsError) throw hospitalsError;
+        if (!active) return;
+
+        setSession(currentSession);
+        setHospitals(data ?? []);
+        setSelectedHospital(data?.[0]?.id ?? '');
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : 'Unable to load the inquiry form.');
       }
     }
-    checkAuth();
+
+    void loadFormData();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, [supabase]);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -65,20 +130,14 @@ export default function TriageUploader() {
         body: formData,
       });
 
-      const contentType = res.headers.get('content-type') || '';
-      let data: any;
+      const data = await readJsonResponse(res);
+      if (!res.ok) throw new Error(getApiError(data, 'Extraction failed'));
 
-      if (contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const textError = await res.text();
-        throw new Error(`Server error: ${textError.slice(0, 150)}`);
-      }
-
-      if (!res.ok) throw new Error(data.error || 'Extraction failed');
-      setResult(data);
-    } catch (err: any) {
-      setError(err.message || 'Upload failed');
+      const parsed = triageResultSchema.safeParse(data);
+      if (!parsed.success) throw new Error('The analysis service returned an invalid response.');
+      setResult(parsed.data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setLoading(false);
     }
@@ -90,7 +149,7 @@ export default function TriageUploader() {
       router.push('/auth');
       return;
     }
-    if (!selectedHospital || !consentAgreed) return;
+    if (!selectedHospital || !consentAgreed || !result) return;
 
     setSubmitting(true);
     setSubmitError(null);
@@ -98,11 +157,9 @@ export default function TriageUploader() {
     try {
       const res = await fetch('/api/inquiries/create', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patientId: session.user.id,
-          email: session.user.email,
-          fullName: session.user.user_metadata?.full_name || 'Patient',
           phone,
           hospitalId: selectedHospital,
           benchmarkId: result.benchmark.id,
@@ -112,11 +169,17 @@ export default function TriageUploader() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit inquiry');
+      const data = await readJsonResponse(res);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push(`/auth?next=${encodeURIComponent('/')}`);
+          return;
+        }
+        throw new Error(getApiError(data, 'Failed to submit inquiry'));
+      }
       setSubmitSuccess(true);
-    } catch (err: any) {
-      setSubmitError(err.message);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit inquiry');
     } finally {
       setSubmitting(false);
     }
@@ -181,7 +244,7 @@ export default function TriageUploader() {
                 </p>
               </div>
               <button
-                onClick={() => router.push('/auth')}
+                onClick={() => router.push(`/auth?next=${encodeURIComponent('/')}`)}
                 className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 font-semibold text-xs text-white rounded-lg transition"
               >
                 Sign In / Sign Up to Unlock Audit

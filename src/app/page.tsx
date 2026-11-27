@@ -40,15 +40,7 @@ export default async function Home() {
   return (
     <main className="min-h-screen bg-slate-50 p-8 text-slate-900">
       <div className="max-w-5xl mx-auto space-y-10">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            TourAndTreat Triage Engine
-          </h1>
-          <p className="text-slate-600">
-            US elective surgery cost vs. Indian JCI hospital package benchmarks.
-          </p>
-
-          <div className="flex justify-between items-start">
+        <header className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               TourAndTreat Triage Engine
@@ -63,7 +55,6 @@ export default async function Home() {
           >
             Coordinator Portal
           </a>
-          </div>
         </header>
 
         <section>

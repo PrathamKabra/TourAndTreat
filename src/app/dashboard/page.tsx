@@ -1,59 +1,140 @@
-import { Suspense } from 'react';
-import { supabase } from '@/lib/supabase';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { z } from 'zod';
 import StatusUpdater from '@/components/StatusUpdater';
-import { Building2, User, DollarSign, FileText } from 'lucide-react';
+import { ArrowLeft, Building2, User, DollarSign, FileText, Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase-browser';
 
-interface InquiryRecord {
-  id: string;
-  status: string;
-  extracted_diagnosis: string;
-  extracted_procedure_name: string;
-  extracted_cpt_code: string;
-  us_quoted_price: number;
-  estimated_india_package_cost: number;
-  estimated_net_savings: number;
-  hospital_preliminary_notes: string;
-  created_at: string;
-  profiles: {
-    full_name: string;
-    email: string;
-    phone: string;
-  }[] | {
-    full_name: string;
-    email: string;
-    phone: string;
-  } | null;
-  hospitals: {
-    name: string;
-    city: string;
-  }[] | {
-    name: string;
-    city: string;
-  } | null;
-}
+const profileSchema = z.object({
+  full_name: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+});
 
-async function DashboardContent() {
-  const { data: inquiries, error } = await supabase
-    .from('inquiries')
-    .select(`
-      id,
-      status,
-      extracted_diagnosis,
-      extracted_procedure_name,
-      extracted_cpt_code,
-      us_quoted_price,
-      estimated_india_package_cost,
-      estimated_net_savings,
-      hospital_preliminary_notes,
-      created_at,
-      profiles (full_name, email, phone),
-      hospitals (name, city)
-    `)
-    .order('created_at', { ascending: false });
+const hospitalSchema = z.object({
+  name: z.string().nullable(),
+  city: z.string().nullable(),
+});
+
+const inquirySchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  extracted_diagnosis: z.string().nullable(),
+  extracted_procedure_name: z.string().nullable(),
+  extracted_cpt_code: z.string().nullable(),
+  us_quoted_price: z.union([z.number(), z.string(), z.null()]),
+  estimated_india_package_cost: z.union([z.number(), z.string(), z.null()]),
+  estimated_net_savings: z.union([z.number(), z.string(), z.null()]),
+  hospital_preliminary_notes: z.string().nullable(),
+  created_at: z.string(),
+  profiles: z.union([profileSchema, z.array(profileSchema), z.null()]),
+  hospitals: z.union([hospitalSchema, z.array(hospitalSchema), z.null()]),
+});
+
+const inquiryResponseSchema = z.object({
+  inquiries: z.array(inquirySchema),
+});
+
+type InquiryRecord = z.infer<typeof inquirySchema>;
+
+function DashboardContent() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    setActionError(null);
+
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+      router.replace('/');
+      router.refresh();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Unable to sign out.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadInquiries() {
+      try {
+        const response = await fetch('/api/coordinator/inquiries', {
+          credentials: 'same-origin',
+        });
+        const payload: unknown = await response.json();
+
+        if (!response.ok) {
+          const errorPayload = z.object({ error: z.string() }).safeParse(payload);
+          throw new Error(
+            errorPayload.success
+              ? errorPayload.data.error
+              : 'Unable to load coordinator inquiries.'
+          );
+        }
+
+        const parsed = inquiryResponseSchema.safeParse(payload);
+        if (!parsed.success) throw new Error('The coordinator service returned invalid inquiry data.');
+
+        if (active) setInquiries(parsed.data.inquiries);
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : 'Unable to load coordinator inquiries.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadInquiries();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-100 p-8 text-slate-900">
       <div className="max-w-6xl mx-auto space-y-6">
+        <nav className="flex justify-between items-center">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Triage Calculator
+          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+          >
+            {signingOut ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Signing out...
+              </span>
+            ) : (
+              'Sign Out'
+            )}
+          </button>
+        </nav>
+
+        {actionError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700" role="alert">
+            {actionError}
+          </div>
+        )}
+
         <header className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Coordinator Triage Dashboard</h1>
@@ -63,27 +144,35 @@ async function DashboardContent() {
           </div>
           <div className="text-right">
             <span className="text-xs font-semibold uppercase text-slate-400">Total Inquiries</span>
-            <p className="text-2xl font-bold text-slate-800">{inquiries?.length || 0}</p>
+            <p className="text-2xl font-bold text-slate-800">
+              {loading ? '…' : error ? '—' : inquiries.length}
+            </p>
           </div>
         </header>
 
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            Error fetching inquiries: {error.message}
+        {loading ? (
+          <div className="bg-white p-12 text-center rounded-xl border border-slate-200 text-sm text-slate-500" role="status">
+            Loading inquiries...
           </div>
-        )}
-
-        {inquiries && inquiries.length === 0 ? (
+        ) : error ? (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700" role="alert">
+            <p>{error}</p>
+            <Link
+              href="/auth?next=%2Fdashboard"
+              className="inline-block mt-2 font-semibold underline"
+            >
+              Sign in with a coordinator account
+            </Link>
+          </div>
+        ) : inquiries.length === 0 ? (
           <div className="bg-white p-12 text-center rounded-xl border border-slate-200 space-y-2">
             <FileText className="w-8 h-8 text-slate-400 mx-auto" />
             <h3 className="font-semibold text-slate-800">No inquiries yet</h3>
-            <p className="text-sm text-slate-500">
-              Submit a test inquiry through the home page uploader to see it populate here.
-            </p>
+            <p className="text-sm text-slate-500">There are no inquiries assigned to the coordinator portal.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {inquiries?.map((item: InquiryRecord) => {
+            {inquiries.map((item) => {
               const patient = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
               const hospital = Array.isArray(item.hospitals) ? item.hospitals[0] : item.hospitals;
 
@@ -103,14 +192,15 @@ async function DashboardContent() {
                         {item.extracted_procedure_name || 'Elective Procedure'}
                       </h3>
                       <p className="text-xs text-slate-600">
-                        Diagnosis: {item.extracted_diagnosis} {item.extracted_cpt_code && `(CPT ${item.extracted_cpt_code})`}
+                        Diagnosis: {item.extracted_diagnosis || 'Clinical evaluation'}{' '}
+                        {item.extracted_cpt_code && `(CPT ${item.extracted_cpt_code})`}
                       </p>
                     </div>
 
                     <div className="text-right">
                       <span className="text-xs text-emerald-600 font-semibold uppercase">Net Savings</span>
                       <p className="text-xl font-bold text-emerald-600">
-                        ${Number(item.estimated_net_savings).toLocaleString()}
+                        ${Number(item.estimated_net_savings ?? 0).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -121,7 +211,7 @@ async function DashboardContent() {
                         <User className="w-3.5 h-3.5 text-slate-400" />
                         Patient Details
                       </div>
-                      <p className="text-slate-800 font-medium">{patient?.full_name || 'Guest User'}</p>
+                      <p className="text-slate-800 font-medium">{patient?.full_name || 'Patient'}</p>
                       <p className="text-slate-500">{patient?.email || 'No email'}</p>
                       {patient?.phone && <p className="text-slate-500">{patient.phone}</p>}
                     </div>
@@ -141,10 +231,16 @@ async function DashboardContent() {
                         Financial Overview
                       </div>
                       <p className="text-slate-600">
-                        US Quoted: <span className="font-semibold text-slate-800">${Number(item.us_quoted_price).toLocaleString()}</span>
+                        US Quoted:{' '}
+                        <span className="font-semibold text-slate-800">
+                          ${Number(item.us_quoted_price ?? 0).toLocaleString()}
+                        </span>
                       </p>
                       <p className="text-slate-600">
-                        India Cost: <span className="font-semibold text-emerald-600">${Number(item.estimated_india_package_cost).toLocaleString()}</span>
+                        India Cost:{' '}
+                        <span className="font-semibold text-emerald-600">
+                          ${Number(item.estimated_india_package_cost ?? 0).toLocaleString()}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -164,34 +260,6 @@ async function DashboardContent() {
   );
 }
 
-function DashboardLoading() {
-  return (
-    <main className="min-h-screen bg-slate-100 p-8 text-slate-900">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <header className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Coordinator Triage Dashboard</h1>
-            <p className="text-sm text-slate-500">
-              Manage international medical travel leads, hospital reviews, and preliminary clinical notes.
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-xs font-semibold uppercase text-slate-400">Total Inquiries</span>
-            <p className="text-2xl font-bold text-slate-800">…</p>
-          </div>
-        </header>
-        <div className="bg-white p-12 text-center rounded-xl border border-slate-200 text-sm text-slate-500" role="status">
-          Loading inquiries...
-        </div>
-      </div>
-    </main>
-  );
-}
-
 export default function DashboardPage() {
-  return (
-    <Suspense fallback={<DashboardLoading />}>
-      <DashboardContent />
-    </Suspense>
-  );
+  return <DashboardContent />;
 }
