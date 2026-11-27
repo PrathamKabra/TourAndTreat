@@ -1,6 +1,7 @@
+import { Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import StatusUpdater from '@/components/StatusUpdater';
-import { Building2, User, DollarSign, Calendar, FileText } from 'lucide-react';
+import { Building2, User, DollarSign, FileText } from 'lucide-react';
 
 interface InquiryRecord {
   id: string;
@@ -17,14 +18,21 @@ interface InquiryRecord {
     full_name: string;
     email: string;
     phone: string;
+  }[] | {
+    full_name: string;
+    email: string;
+    phone: string;
   } | null;
   hospitals: {
+    name: string;
+    city: string;
+  }[] | {
     name: string;
     city: string;
   } | null;
 }
 
-export default async function DashboardPage() {
+async function DashboardContent() {
   const { data: inquiries, error } = await supabase
     .from('inquiries')
     .select(`
@@ -75,7 +83,7 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {inquiries?.map((item: any) => {
+            {inquiries?.map((item: InquiryRecord) => {
               const patient = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
               const hospital = Array.isArray(item.hospitals) ? item.hospitals[0] : item.hospitals;
 
@@ -153,5 +161,37 @@ export default async function DashboardPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function DashboardLoading() {
+  return (
+    <main className="min-h-screen bg-slate-100 p-8 text-slate-900">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <header className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Coordinator Triage Dashboard</h1>
+            <p className="text-sm text-slate-500">
+              Manage international medical travel leads, hospital reviews, and preliminary clinical notes.
+            </p>
+          </div>
+          <div className="text-right">
+            <span className="text-xs font-semibold uppercase text-slate-400">Total Inquiries</span>
+            <p className="text-2xl font-bold text-slate-800">…</p>
+          </div>
+        </header>
+        <div className="bg-white p-12 text-center rounded-xl border border-slate-200 text-sm text-slate-500" role="status">
+          Loading inquiries...
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

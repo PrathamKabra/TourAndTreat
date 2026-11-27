@@ -33,8 +33,8 @@ export default function StatusUpdater({ inquiryId, currentStatus, currentNotes }
       if (!res.ok) throw new Error('Update failed');
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Update failed');
     } finally {
       setSaving(false);
     }
